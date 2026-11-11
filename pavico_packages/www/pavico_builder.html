@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pavico Package Builder</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Outfit:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/pavico_packages/builder/css/styles.css?v={{ v }}">
+</head>
+<body>
+  <header class="topbar no-print">
+    <div class="brand">
+      <img class="logo" src="/assets/pavico_packages/builder/img/logo.png" alt="Pavico">
+      <span class="app-name">Package Builder</span>
+    </div>
+    <div class="top-actions">
+      <button class="btn ghost" data-action="new-quote">New quote</button>
+      <button class="btn ghost" data-action="toggle-saved">Saved quotes</button>
+      <a class="btn ghost" href="/app/travel-quote">ERPNext</a>
+    </div>
+  </header>
+
+  <div class="layout">
+    <nav class="stepper no-print" id="stepper"></nav>
+    <main id="main"></main>
+    <aside class="summary no-print" id="summary"></aside>
+  </div>
+
+  <div class="drawer no-print" id="saved-drawer" hidden></div>
+  <div class="toast" id="toast" hidden></div>
+
+  <script>
+    window.PAVICO_BOOT = {{ boot_json | safe }};
+    window.PAVICO_CSRF = "{{ csrf }}";
+    window.PAVICO_ASSETS = "/assets/pavico_packages/builder/";
+  </script>
+  <script src="/assets/pavico_packages/builder/data/site-packages.js?v={{ v }}"></script>
+  <script src="/assets/pavico_packages/builder/data/pavico-packages.js?v={{ v }}"></script>
+  <script src="/assets/pavico_packages/builder/js/catalog.js?v={{ v }}"></script>
+  <script src="/assets/pavico_packages/builder/js/store.js?v={{ v }}"></script>
+  <script src="/assets/pavico_packages/builder/js/wiki.js?v={{ v }}"></script>
+  <script src="/assets/pavico_packages/builder/js/suppliers.js?v={{ v }}"></script>
+  <script src="/assets/pavico_packages/builder/js/pricing.js?v={{ v }}"></script>
+  <script src="/assets/pavico_packages/builder/js/itinerary.js?v={{ v }}"></script>
+  <script src="/assets/pavico_packages/builder/js/app.js?v={{ v }}"></script>
+</body>
+</html>

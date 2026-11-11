@@ -1,0 +1,118 @@
+{
+ "actions": [],
+ "autoname": "format:{city_id}-{tier}",
+ "creation": "2026-11-11 10:00:00.000000",
+ "description": "The team's rate sheet: one row per city and tier, reused across quotes",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "city_name",
+  "city_id",
+  "tier",
+  "hotel",
+  "source",
+  "column_break_cost",
+  "rate",
+  "cab",
+  "act"
+ ],
+ "fields": [
+  {
+   "fieldname": "city_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "City"
+  },
+  {
+   "fieldname": "city_id",
+   "fieldtype": "Data",
+   "label": "City ID",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "tier",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Tier",
+   "options": "budget\nmid\nluxury",
+   "reqd": 1
+  },
+  {
+   "fieldname": "hotel",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Hotel"
+  },
+  {
+   "description": "Where the rate came from (rate sheet, TBO, TripJack, MMT, hotel direct)",
+   "fieldname": "source",
+   "fieldtype": "Data",
+   "label": "Rate Source"
+  },
+  {
+   "fieldname": "column_break_cost",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "rate",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Hotel per room per night (INR)"
+  },
+  {
+   "fieldname": "cab",
+   "fieldtype": "Currency",
+   "label": "Vehicle per day (INR)"
+  },
+  {
+   "fieldname": "act",
+   "fieldtype": "Currency",
+   "label": "Activities per person (INR)"
+  }
+ ],
+ "links": [],
+ "modified": "2026-11-11 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Pavico Packages",
+ "name": "Pavico Rate",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "export": 1,
+   "import": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "export": 1,
+   "import": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales Manager",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales User",
+   "write": 1
+  }
+ ],
+ "search_fields": "city_name,hotel",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "city_name",
+ "track_changes": 1
+}

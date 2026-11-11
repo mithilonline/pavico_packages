@@ -1,0 +1,100 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2026-11-11 10:00:00.000000",
+ "description": "Team knowledge about one attraction: Pavico pick star, the team's own photo, or a hidden wrong photo",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "attraction",
+  "city",
+  "attraction_key",
+  "pavico_pick",
+  "hide_photo",
+  "photo"
+ ],
+ "fields": [
+  {
+   "fieldname": "attraction",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Attraction"
+  },
+  {
+   "fieldname": "city",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "City"
+  },
+  {
+   "description": "city|attraction in lower case, as the Package Builder looks it up",
+   "fieldname": "attraction_key",
+   "fieldtype": "Data",
+   "label": "Key",
+   "length": 255,
+   "read_only": 1,
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "pavico_pick",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Pavico Pick"
+  },
+  {
+   "default": "0",
+   "description": "The automatic Wikipedia photo was wrong, show none",
+   "fieldname": "hide_photo",
+   "fieldtype": "Check",
+   "label": "Hide Photo"
+  },
+  {
+   "fieldname": "photo",
+   "fieldtype": "Attach Image",
+   "label": "Team Photo"
+  }
+ ],
+ "image_field": "photo",
+ "links": [],
+ "modified": "2026-11-11 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Pavico Packages",
+ "name": "Attraction Note",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales Manager",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales User",
+   "write": 1
+  }
+ ],
+ "search_fields": "attraction,city",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "attraction",
+ "track_changes": 1
+}
