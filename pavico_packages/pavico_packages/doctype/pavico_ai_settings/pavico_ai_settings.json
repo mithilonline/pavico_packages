@@ -52,7 +52,8 @@
    "label": "Anthropic API Key"
   },
   {
-   "default": "claude-opus-5-5",
+   "default": "claude-haiku-5-5",
+   "description": "claude-haiku-5-5 (cheapest), claude-sonnet-5-5 (balanced) or claude-opus-5-5 (most careful)",
    "fieldname": "model",
    "fieldtype": "Data",
    "label": "Model"

@@ -22,6 +22,8 @@ from frappe.utils import add_to_date, get_datetime, now_datetime, nowdate
 SETTINGS = "Pavico AI Settings"
 CHAT = "Pavico AI Chat"
 HISTORY_MESSAGES = 24
+DEFAULT_MODEL = "claude-haiku-5-5"  # chosen for budget; Pavico AI Settings → Model can switch it
+FALLBACK_MODELS = {"claude-opus-5-5", "claude-opus-5", "claude-sonnet-5-5", "claude-fable-5-2", "claude-fable-5-1"}
 DEBOUNCE_SECONDS = 8
 
 REPLY_SCHEMA = {
@@ -264,15 +266,20 @@ def _ask_claude(settings, history):
 			"cache_control": {"type": "ephemeral", "ttl": "1h"},
 		},
 	]
-	response = client.beta.messages.create(
-		model=settings.model or "claude-opus-5-5",
+	model = settings.model or DEFAULT_MODEL
+	request = dict(
+		model=model,
 		max_tokens=4000,
-		betas=["server-side-fallback-2026-07-01"],
-		fallbacks="default",
 		output_config={"effort": settings.effort or "low", "format": {"type": "json_schema", "schema": REPLY_SCHEMA}},
 		system=system,
 		messages=history,
 	)
+	if model in FALLBACK_MODELS:
+		# on a refusal, the API re-runs the request on a fallback model inside the same call
+		response = client.beta.messages.create(betas=["server-side-fallback-2026-07-01"], fallbacks="default", **request)
+	else:
+		# Haiku has no server-side fallback; a refusal hands the chat to the team (below)
+		response = client.messages.create(**request)
 	if response.stop_reason == "refusal":
 		frappe.log_error(f"Refused: {getattr(response, 'stop_details', None)}", "Pavico WhatsApp AI")
 		return {"reply": "", "handover": True, "handover_reason": "The assistant could not answer this message", **{k: "" for k in ("customer_name", "destination", "travel_dates", "travellers", "notes")}}
