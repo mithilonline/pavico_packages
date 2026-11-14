@@ -1243,9 +1243,23 @@
         let digits = String(st.phone || '').replace(/\D/g, '');
         if (/^0\d{10}$/.test(digits)) digits = digits.slice(1);
         if (/^\d{10}$/.test(digits)) digits = `91${digits}`;
-        const url = `https://wa.me/${digits.length >= 11 ? digits : ''}?text=${encodeURIComponent(whatsappText())}`;
-        window.open(url, '_blank', 'noopener');
-        toast(digits.length >= 11 ? `Opening WhatsApp for +${digits}` : 'No client number: choose the chat in WhatsApp');
+        const phone = digits.length >= 11 ? digits : '';
+        const text = encodeURIComponent(whatsappText());
+        // Open the installed WhatsApp app (desktop or phone). If nothing takes the link within
+        // ~1.5 s (no app installed), fall back to WhatsApp Web.
+        const appUrl = `whatsapp://send?${phone ? `phone=${phone}&` : ''}text=${text}`;
+        const webUrl = `https://wa.me/${phone}?text=${text}`;
+        let left = false;
+        const onBlur = () => { left = true; };
+        window.addEventListener('blur', onBlur, { once: true });
+        document.addEventListener('visibilitychange', onBlur, { once: true });
+        window.location.href = appUrl;
+        setTimeout(() => {
+          window.removeEventListener('blur', onBlur);
+          document.removeEventListener('visibilitychange', onBlur);
+          if (!left && !document.hidden) window.open(webUrl, '_blank', 'noopener');
+        }, 1500);
+        toast(phone ? `Opening WhatsApp for +${phone}` : 'No client number: choose the chat in WhatsApp');
         return;
       }
       case 'copy-wa': {

@@ -26,3 +26,6 @@ doc_events = {
 		"after_insert": "pavico_packages.whatsapp_ai.on_whatsapp_message",
 	}
 }
+
+# "Convert to Lead" / "Open Lead" on received emails
+doctype_js = {"Communication": "public/js/communication.js"}
