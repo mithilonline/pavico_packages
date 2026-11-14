@@ -709,6 +709,7 @@
         <label class="field inline discount"><span>Discount</span><input type="number" min="0" ${st.discountType === 'pct' ? 'max="100" step="0.5"' : 'step="100"'} data-bind="discount" value="${+st.discount || ''}" placeholder="0">
           <select data-bind="discountType"><option value="amt" ${st.discountType !== 'pct' ? 'selected' : ''}>₹</option><option value="pct" ${st.discountType === 'pct' ? 'selected' : ''}>%</option></select></label>
         <div class="spacer"></div>
+        <button class="btn ghost" data-action="send-wa" title="Opens WhatsApp with the client's number and this quote ready to send">Send on WhatsApp</button>
         <button class="btn ghost" data-action="copy-wa">Copy for WhatsApp</button>
         <button class="btn ghost" data-action="save-quote">Save quote</button>
         <button class="btn primary" data-action="print">Download PDF</button>
@@ -1236,6 +1237,17 @@
       case 'del-extra': st.extras.splice(+ds.i, 1); break;
       case 'view': st.view = ds.view; break;
       case 'print': downloadPdf(el); return;
+      case 'send-wa': {
+        // Opens WhatsApp (app, desktop or web) with the quote typed in; the team member presses send.
+        // Indian numbers: 10 digits get +91; a leading 0 is dropped.
+        let digits = String(st.phone || '').replace(/\D/g, '');
+        if (/^0\d{10}$/.test(digits)) digits = digits.slice(1);
+        if (/^\d{10}$/.test(digits)) digits = `91${digits}`;
+        const url = `https://wa.me/${digits.length >= 11 ? digits : ''}?text=${encodeURIComponent(whatsappText())}`;
+        window.open(url, '_blank', 'noopener');
+        toast(digits.length >= 11 ? `Opening WhatsApp for +${digits}` : 'No client number: choose the chat in WhatsApp');
+        return;
+      }
       case 'copy-wa': {
         const text = whatsappText();
         (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject())
