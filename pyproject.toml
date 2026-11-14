@@ -5,7 +5,7 @@ description = "Pavico Package Builder inside ERPNext: itineraries, rate sheet an
 requires-python = ">=3.10"
 readme = "README.md"
 dynamic = ["version"]
-dependencies = []
+dependencies = ["anthropic>=2.8,<3"]
 
 [tool.bench.frappe-dependencies]
 frappe = ">=16.0.0,<17.0.0"

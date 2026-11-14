@@ -1,0 +1,143 @@
+{
+ "actions": [],
+ "creation": "2026-11-14 12:00:00.000000",
+ "description": "WhatsApp AI assistant: on/off switch, test mode, limits and the knowledge it uses",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "enabled",
+  "test_numbers",
+  "never_reply_numbers",
+  "column_break_main",
+  "api_key",
+  "model",
+  "effort",
+  "section_limits",
+  "max_replies_per_chat_day",
+  "daily_limit",
+  "column_break_limits",
+  "handover_hours",
+  "notify_user",
+  "section_knowledge",
+  "extra_knowledge"
+ ],
+ "fields": [
+  {
+   "default": "0",
+   "description": "Master switch. Off = the assistant never replies.",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled"
+  },
+  {
+   "description": "Test mode: if any numbers are listed (comma or new line), the assistant replies ONLY to them. Clear this to go live for all customers.",
+   "fieldname": "test_numbers",
+   "fieldtype": "Small Text",
+   "label": "Test Numbers (only reply to these)"
+  },
+  {
+   "description": "Numbers the assistant must never answer, e.g. team members, suppliers, family.",
+   "fieldname": "never_reply_numbers",
+   "fieldtype": "Small Text",
+   "label": "Never Reply To"
+  },
+  {
+   "fieldname": "column_break_main",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "From console.anthropic.com → API keys. Stored encrypted.",
+   "fieldname": "api_key",
+   "fieldtype": "Password",
+   "label": "Anthropic API Key"
+  },
+  {
+   "default": "claude-opus-5-5",
+   "fieldname": "model",
+   "fieldtype": "Data",
+   "label": "Model"
+  },
+  {
+   "default": "low",
+   "description": "Higher = more careful replies, slower and costlier.",
+   "fieldname": "effort",
+   "fieldtype": "Select",
+   "label": "Effort",
+   "options": "low\nmedium\nhigh"
+  },
+  {
+   "fieldname": "section_limits",
+   "fieldtype": "Section Break",
+   "label": "Limits & handover"
+  },
+  {
+   "default": "30",
+   "fieldname": "max_replies_per_chat_day",
+   "fieldtype": "Int",
+   "label": "Max AI replies per customer per day",
+   "non_negative": 1
+  },
+  {
+   "default": "500",
+   "fieldname": "daily_limit",
+   "fieldtype": "Int",
+   "label": "Max AI replies per day (all customers)",
+   "non_negative": 1
+  },
+  {
+   "fieldname": "column_break_limits",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "12",
+   "description": "After a handover, or after a team member replies, the assistant stays quiet on that chat for this many hours.",
+   "fieldname": "handover_hours",
+   "fieldtype": "Int",
+   "label": "Quiet hours after handover",
+   "non_negative": 1
+  },
+  {
+   "description": "Gets a ToDo for every handover, and owns new WhatsApp leads.",
+   "fieldname": "notify_user",
+   "fieldtype": "Link",
+   "label": "Notify / lead owner",
+   "options": "User"
+  },
+  {
+   "fieldname": "section_knowledge",
+   "fieldtype": "Section Break",
+   "label": "Extra knowledge"
+  },
+  {
+   "description": "Anything the assistant should know beyond the package catalogue: office hours, FAQs, visa help you offer, payment terms, cancellation policy. Don't put prices here.",
+   "fieldname": "extra_knowledge",
+   "fieldtype": "Long Text",
+   "label": "Notes for the assistant"
+  }
+ ],
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-11-14 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Pavico Packages",
+ "name": "Pavico AI Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "read": 1,
+   "role": "System Manager",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "role": "Sales Manager",
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

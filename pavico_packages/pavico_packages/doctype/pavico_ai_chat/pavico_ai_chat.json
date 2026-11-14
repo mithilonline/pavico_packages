@@ -1,0 +1,131 @@
+{
+ "actions": [],
+ "autoname": "field:phone",
+ "creation": "2026-11-14 12:00:00.000000",
+ "description": "One row per WhatsApp customer the assistant has talked to. Set Status to \"With team\" to stop the assistant on that chat.",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "phone",
+  "status",
+  "lead",
+  "column_break_a",
+  "handed_over_at",
+  "handover_reason",
+  "last_ai_reply",
+  "section_b",
+  "summary",
+  "replies_today",
+  "replies_date"
+ ],
+ "fields": [
+  {
+   "fieldname": "phone",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Phone",
+   "read_only": 1,
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "default": "AI active",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "AI active\nWith team"
+  },
+  {
+   "fieldname": "lead",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "CRM Lead",
+   "options": "CRM Lead"
+  },
+  {
+   "fieldname": "column_break_a",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "handed_over_at",
+   "fieldtype": "Datetime",
+   "label": "Handed Over At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "handover_reason",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "Handover Reason",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_ai_reply",
+   "fieldtype": "Datetime",
+   "label": "Last AI Reply",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_b",
+   "fieldtype": "Section Break",
+   "label": "What the customer told the assistant"
+  },
+  {
+   "fieldname": "summary",
+   "fieldtype": "Small Text",
+   "label": "Summary",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "replies_today",
+   "fieldtype": "Int",
+   "label": "AI Replies Today",
+   "read_only": 1
+  },
+  {
+   "fieldname": "replies_date",
+   "fieldtype": "Date",
+   "label": "Replies Date",
+   "read_only": 1
+  }
+ ],
+ "links": [],
+ "modified": "2026-11-14 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Pavico Packages",
+ "name": "Pavico AI Chat",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales Manager",
+   "write": 1
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "Sales User",
+   "write": 1
+  }
+ ],
+ "search_fields": "lead,handover_reason",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "phone",
+ "track_changes": 1
+}

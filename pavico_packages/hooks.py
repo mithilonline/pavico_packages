@@ -19,3 +19,10 @@ add_to_apps_screen = [
 		"route": "/package-builder",
 	}
 ]
+
+# WhatsApp AI assistant: every incoming customer message queues a reply job (see whatsapp_ai.py)
+doc_events = {
+	"WhatsApp Message": {
+		"after_insert": "pavico_packages.whatsapp_ai.on_whatsapp_message",
+	}
+}
