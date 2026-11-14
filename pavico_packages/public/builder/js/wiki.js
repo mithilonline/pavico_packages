@@ -98,6 +98,37 @@
     out.food.forEach((f, i) => { f.id = `${cityId}-f${i}`; });
   }
 
+  const SIGHT_RE = /\b(temple|kovil|devalaya|vihara|stupa|dagoba|fort|fortress|palace|bridge|museum|waterfall|falls|lake|beach|national park|sanctuary|reserve|garden|viewpoint|view point|peak|mountain|hill|cave|monument|memorial|church|cathedral|mosque|basilica|shrine|monastery|gompa|castle|tower|statue|market|bazaar|zoo|aquarium|ruins|archaeological|heritage|tea estate|plantation|dam|island|lighthouse|square|park|rock|gate|tomb|mausoleum|step ?well|ghat|valley|glacier|canyon|gorge|springs?)\b/i;
+  const NOT_SIGHT_RE = /\b(railway station|station|school|college|university|hospital|road|highway|street|hotel|airport|village|town|city|district|division|electoral|constituency|company|bank|club|stadium|bus|river\b(?! cruise)|suburb|neighbourhood|neighborhood|municipal|council|office|ministry|church of [a-z]+ diocese|cemetery)\b/i;
+  /** Up to 8 notable places within 10 km of the city, from Wikipedia's coordinates. */
+  async function nearbySights(text, have, cityName) {
+    const g = text.match(/\{\{\s*geo\s*\|\s*(-?[\d.]+)\s*\|\s*(-?[\d.]+)/i);
+    if (!g) return [];
+    const geo = await api(WP, { action: 'query', list: 'geosearch', gscoord: `${g[1]}|${g[2]}`, gsradius: 10000, gslimit: 60 });
+    const ids = (geo.query && geo.query.geosearch || []).map((p) => p.pageid);
+    if (!ids.length) return [];
+    const info = await api(WP, { action: 'query', pageids: ids.slice(0, 50).join('|'), prop: 'description' });
+    const known = have.map((a) => words(a.name));
+    const out = [];
+    ids.forEach((id) => {
+      const p = info.query && info.query.pages && info.query.pages[id];
+      if (!p || out.length >= 8) return;
+      const title = p.title.replace(/\s*\([^)]*\)\s*$/, '');
+      const desc = p.description || '';
+      const label = `${title} ${desc}`;
+      if (!SIGHT_RE.test(label) || NOT_SIGHT_RE.test(desc || title)) return;
+      // already listed? any distinctive shared word counts ("Dhowa rock temple" = "Dhowa Temple"),
+      // ignoring the city's own name and its common spelling variants (Rawana/Ravana)
+      const own = new Set([...words(cityName || ''), 'falls', 'waterfall', 'fort', 'palace', 'museum', 'bridge', 'rock', 'hill', 'hills', 'peak', 'garden', 'gardens', 'church', 'mosque', 'shrine', 'national', 'station', 'house', 'tower', 'market', 'square', 'point', 'view', 'gate', 'cave', 'caves', 'kovil', 'vihara', 'devalaya']);
+      const norm = (x) => x.replace(/w/g, 'v');
+      const w = words(title).filter((x) => !own.has(x)).map(norm);
+      if (!w.length || known.some((k) => k.map(norm).some((x) => !own.has(x) && w.includes(x)))) return;
+      known.push(words(title));
+      out.push({ name: title, note: desc.slice(0, 140), price: '', image: '', area: '', hours: 1.5, adult: 0, child: 0, src: 'near' });
+    });
+    return out;
+  }
+
   async function loadCity(city) {
     const { text } = await wikitext(city.name);
     const out = { attractions: [], food: [] };
@@ -119,6 +150,8 @@
         out.attractions.slice(before).forEach((a) => { a.area = area; });
       });
     }
+    // sights the guide doesn't list but Wikipedia's map knows about (e.g. Nine Arch Bridge near Ella)
+    try { (await nearbySights(text, out.attractions, city.name)).forEach((a) => out.attractions.push(a)); } catch (e) { /* optional */ }
     finish(out, text, city.id);
     return Object.assign(out, { loaded: true, blurb: clean((text.match(/^[^{|=\n[][^\n]{40,}$/m) || [''])[0]).slice(0, 120) });
   }

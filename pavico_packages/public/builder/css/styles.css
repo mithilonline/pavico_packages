@@ -300,3 +300,20 @@ th { font-size: 12px; color: var(--muted); font-weight: 500; text-transform: upp
   [contenteditable]:hover { background: none; }
   h2 { break-after: avoid; }
 }
+
+/* feedback round 2: client search, rooms, vehicles, discount, own places, errors */
+.client-search, .add-city-search { position: relative; }
+.client-search .wv-results button small { margin-left: 6px; }
+.linked { color: var(--deep-teal); font-size: 12.5px; }
+.rooms-row { align-items: end; }
+.rooms-note { grid-column: span 2; margin: 0 0 6px; }
+.error-text { color: #B42318; font-weight: 500; }
+input.invalid, select.invalid { border-color: #B42318 !important; box-shadow: 0 0 0 3px rgba(180, 35, 24, .15); }
+.add-city-search { margin: 16px 0 4px; max-width: 520px; }
+.own-add { display: flex; gap: 8px; margin: 10px 0 4px; max-width: 520px; }
+.own-add input { flex: 1; }
+.field.inline.discount input { width: 90px; }
+.field.inline.discount select { width: auto; padding: 8px 6px; }
+.discount-note { grid-column: 1 / -1; margin: -4px 0 0; color: var(--deep-teal); font-weight: 500; }
+.vehicle-row { margin-top: 12px; }
+input[type="date"]:disabled { background: var(--off); color: var(--navy); }

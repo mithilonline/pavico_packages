@@ -47,7 +47,7 @@
   /** Saves one change. Browser mode rewrites the whole key; ERP mode sends just the change. */
   function persist(name, method, args) {
     if (mode === 'browser') return Promise.resolve(local.set(KEYS[name], data[name]));
-    return call(method, args).then(() => true).catch((err) => { onError(err); return false; });
+    return call(method, args).then((m) => m || true).catch((err) => { onError(err); return false; });
   }
 
   window.PavicoStore = {
@@ -72,6 +72,32 @@
         data.quotes = data.quotes.filter((q) => !(q.ref === ref && (!version || q.version === +version)));
         return persist('quotes', 'delete_quote', { ref, version: version || 0 });
       },
+    },
+
+    // Client lookup: ERPNext customers & contacts; in the prototype, clients of saved quotes
+    clients: {
+      search(q) {
+        if (mode === 'erp') return call('search_clients', { txt: q }).then((r) => r || []);
+        const seen = new Set();
+        const ql = q.toLowerCase();
+        return Promise.resolve(data.quotes
+          .map((x) => ({ title: x.client || (x.state && x.state.client) || '', phone: (x.state && x.state.phone) || '', type: 'Past quote' }))
+          .filter((x) => x.title && x.title.toLowerCase().includes(ql) && !seen.has(x.title) && seen.add(x.title))
+          .slice(0, 8));
+      },
+    },
+
+    /** ERP mode: the server turns the quote HTML into a text PDF (page numbers, quote no.). Resolves to a Blob. */
+    pdf(html, filename) {
+      return fetch('/api/method/pavico_packages.api.quote_pdf', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-Frappe-CSRF-Token': window.PAVICO_CSRF || '' },
+        body: JSON.stringify({ html, filename }),
+      }).then(async (r) => {
+        if (!r.ok || !/pdf/.test(r.headers.get('Content-Type') || '')) throw new Error(`the server couldn’t make the PDF (${r.status})`);
+        return r.blob();
+      });
     },
 
     rates: {

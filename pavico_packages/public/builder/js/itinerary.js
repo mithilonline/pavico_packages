@@ -32,8 +32,8 @@
 
       // timed activities, grouped by area (keeps first-seen area order)
       const acts = [
-        ...city.attractions.filter((a) => (picks.attractions || []).includes(a.id)),
-        ...city.mustTry.filter((m) => (picks.mustTry || []).includes(m.id)),
+        ...(city.attractions || []).filter((a) => (picks.attractions || []).includes(a.id)),
+        ...(city.mustTry || []).filter((m) => (picks.mustTry || []).includes(m.id)),
       ].filter((a) => !placed.has(a.id));
       const areaOrder = [];
       acts.forEach((a) => { if (!areaOrder.includes(a.area)) areaOrder.push(a.area); });

@@ -13,7 +13,9 @@
   "source",
   "column_break_cost",
   "rate",
+  "extra_bed",
   "cab",
+  "vehicle_rates",
   "act"
  ],
  "fields": [
@@ -59,22 +61,39 @@
   {
    "fieldname": "rate",
    "fieldtype": "Currency",
+   "non_negative": 1,
    "in_list_view": 1,
    "label": "Hotel per room per night (INR)"
   },
   {
+   "description": "Third person in a triple-sharing room, per night",
+   "fieldname": "extra_bed",
+   "fieldtype": "Currency",
+   "label": "Extra bed per night (INR)",
+   "non_negative": 1
+  },
+  {
+   "description": "Older single vehicle rate, used until a vehicle-type rate is entered",
    "fieldname": "cab",
    "fieldtype": "Currency",
-   "label": "Vehicle per day (INR)"
+   "label": "Vehicle per day, any type (INR)"
+  },
+  {
+   "description": "Per-day rate by vehicle type, e.g. {\"sedan\": 2500, \"suv\": 3500, \"tt12\": 5500}",
+   "fieldname": "vehicle_rates",
+   "fieldtype": "Code",
+   "label": "Vehicle rates by type (INR per day)",
+   "options": "JSON"
   },
   {
    "fieldname": "act",
    "fieldtype": "Currency",
+   "non_negative": 1,
    "label": "Activities per person (INR)"
   }
  ],
  "links": [],
- "modified": "2026-11-11 10:00:00.000000",
+ "modified": "2026-11-14 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Pavico Packages",
  "name": "Pavico Rate",

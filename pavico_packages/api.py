@@ -9,7 +9,7 @@ from frappe import _
 from frappe.utils import cint, flt, getdate
 
 TIERS = {"budget": "Budget", "mid": "Mid-luxury", "luxury": "Luxury"}
-RATE_FIELDS = ("hotel", "source", "rate", "cab", "act")
+RATE_FIELDS = ("hotel", "source", "rate", "cab", "act", "extra_bed", "vehicle_rates")
 QUOTES_IN_BOOT = 200
 
 
@@ -46,6 +46,8 @@ def get_boot():
 			"rate": flt(r.rate),
 			"cab": flt(r.cab),
 			"act": flt(r.act),
+			"xbed": flt(r.extra_bed),
+			"vehicles": _parse(r.vehicle_rates or "{}"),
 		}
 
 	picks, photos, hidden = {}, {}, {}
@@ -85,22 +87,144 @@ def save_quote(entry):
 		doc.ref = ref
 		doc.version = version
 
+	client = (entry.get("client") or state.get("client") or "").strip()
+	phone = (state.get("phone") or "").strip()
+	customer = state.get("customer") or ""
+	contact = state.get("contact") or ""
+	if customer and not frappe.db.exists("Customer", customer):
+		customer = ""
+	if contact and not frappe.db.exists("Contact", contact):
+		contact = ""
+	if not customer and not contact and client:
+		contact = _find_or_create_contact(client, phone)
+	if contact and not customer:
+		customer = frappe.db.get_value(
+			"Dynamic Link", {"parenttype": "Contact", "parent": contact, "link_doctype": "Customer"}, "link_name"
+		) or ""
+	state["customer"], state["contact"] = customer, contact
+
 	travellers = cint(state.get("adults")) + cint(state.get("children"))
 	doc.update(
 		{
-			"client_name": entry.get("client") or state.get("client") or "",
-			"phone": state.get("phone") or "",
+			"client_name": client,
+			"phone": phone,
+			"customer": customer or None,
+			"contact": contact or None,
 			"package_title": entry.get("title") or "",
 			"destination": (state.get("customDest") or {}).get("name") or state.get("destId") or "",
 			"start_date": getdate(state["startDate"]) if state.get("startDate") else None,
+			"end_date": getdate(entry["endDate"]) if entry.get("endDate") else None,
 			"travellers": travellers,
 			"tier": TIERS.get(state.get("tier"), ""),
+			"discount": flt(entry.get("discount")),
 			"total": flt(entry.get("total")),
 			"state_json": json.dumps(state),
 		}
 	)
 	doc.save()  # checks the user's write/create permission
-	return {"name": doc.name}
+	return {"name": doc.name, "customer": customer, "contact": contact}
+
+
+def _find_or_create_contact(client, phone):
+	"""A new client becomes an ERPNext Contact (matched by mobile number first, so no duplicates)."""
+	digits = re.sub(r"\D", "", phone or "")[-10:]
+	if digits:
+		match = frappe.get_all(
+			"Contact", or_filters=[["mobile_no", "like", f"%{digits}"], ["phone", "like", f"%{digits}"]], pluck="name", limit=1
+		)
+		if match:
+			return match[0]
+	first, _sep, last = client.partition(" ")
+	contact = frappe.get_doc({"doctype": "Contact", "first_name": first, "last_name": last})
+	if phone:
+		contact.append("phone_nos", {"phone": phone, "is_primary_mobile_no": 1})
+	contact.insert()  # checks the user's create permission on Contact
+	return contact.name
+
+
+# ───────────── clients: ERPNext customers and contacts ─────────────
+@frappe.whitelist()
+def search_clients(txt):
+	txt = (txt or "").strip()
+	if len(txt) < 2:
+		return []
+	like = f"%{txt}%"
+	out = []
+	for c in frappe.get_list(
+		"Customer",
+		or_filters=[["customer_name", "like", like], ["mobile_no", "like", like]],
+		fields=["name", "customer_name", "mobile_no", "customer_primary_contact"],
+		limit_page_length=8,
+	):
+		phone = c.mobile_no or (
+			frappe.db.get_value("Contact", c.customer_primary_contact, "mobile_no") if c.customer_primary_contact else ""
+		)
+		out.append(
+			{"type": "Customer", "title": c.customer_name, "customer": c.name, "contact": c.customer_primary_contact or "", "phone": phone or ""}
+		)
+	for ct in frappe.get_list(
+		"Contact",
+		or_filters=[["full_name", "like", like], ["mobile_no", "like", like], ["phone", "like", like]],
+		fields=["name", "full_name", "mobile_no", "phone"],
+		limit_page_length=8,
+	):
+		if any(o["contact"] == ct.name for o in out):
+			continue
+		cust = frappe.db.get_value("Dynamic Link", {"parenttype": "Contact", "parent": ct.name, "link_doctype": "Customer"}, "link_name")
+		out.append(
+			{"type": "Contact", "title": ct.full_name or ct.name, "contact": ct.name, "customer": cust or "", "phone": ct.mobile_no or ct.phone or ""}
+		)
+	return out[:12]
+
+
+# ───────────── client PDF ─────────────
+_BLOCKED_TAGS = re.compile(r"<\s*(script|iframe|frame|frameset|object|embed|base|form|input|textarea|video|audio)\b[^>]*>(.*?<\s*/\s*\1\s*>)?", re.I | re.S)
+_LINK_TAG = re.compile(r"<\s*link\b[^>]*>", re.I)
+_META_REFRESH = re.compile(r"<\s*meta\b[^>]*http-equiv[^>]*>", re.I)
+
+
+def _clean_pdf_html(html):
+	html = _BLOCKED_TAGS.sub("", html)
+	html = _LINK_TAG.sub(lambda m: m.group(0) if "fonts.googleapis.com" in m.group(0) else "", html)
+	html = _META_REFRESH.sub("", html)
+	# no local files and no script URLs, in attributes or CSS
+	return re.sub(r"(?i)\b(file|javascript|chrome|view-source)\s*:", "blocked:", html)
+
+
+@frappe.whitelist(methods=["POST"])
+def quote_pdf(html, filename="Pavico-quote.pdf"):
+	"""Renders the quote page with the server's Chromium: real text, A4, footer with quote no. and page numbers."""
+	import os
+	import shutil
+	import subprocess
+	import tempfile
+
+	if not frappe.has_permission("Travel Quote", "read"):
+		frappe.throw(_("Not permitted"), frappe.PermissionError)
+	if not html or len(html) > 8 * 1024 * 1024:
+		frappe.throw(_("The quote is empty or too large"))
+	chromium = frappe.conf.get("chromium_path") or shutil.which("chromium-headless-shell") or shutil.which("chromium")
+	if not chromium:
+		frappe.throw(_("Chromium is not installed on the server"))
+	with tempfile.TemporaryDirectory() as d:
+		src, out = os.path.join(d, "quote.html"), os.path.join(d, "quote.pdf")
+		with open(src, "w", encoding="utf-8") as f:
+			f.write(_clean_pdf_html(html))
+		subprocess.run(
+			[
+				chromium, "--headless", "--no-sandbox", "--disable-gpu", "--no-pdf-header-footer",
+				"--blink-settings=scriptEnabled=false", "--virtual-time-budget=15000",
+				f"--print-to-pdf={out}", f"file://{src}",
+			],
+			capture_output=True, timeout=120, check=False,
+		)
+		if not os.path.exists(out) or os.path.getsize(out) < 500:
+			frappe.throw(_("The PDF could not be made. Please try again."))
+		with open(out, "rb") as f:
+			data = f.read()
+	frappe.local.response.filename = re.sub(r"[^A-Za-z0-9._-]+", "-", filename or "Pavico-quote.pdf")[:150]
+	frappe.local.response.filecontent = data
+	frappe.local.response.type = "download"
 
 
 @frappe.whitelist(methods=["POST"])
@@ -129,6 +253,10 @@ def set_rate(city_id, tier, rate, city_name=None):
 	doc.source = rate.get("source") or "ratesheet"
 	for f in ("rate", "cab", "act"):
 		doc.set(f, flt(rate.get(f)))
+	if any(flt(v) < 0 for v in [rate.get("rate"), rate.get("cab"), rate.get("act"), rate.get("xbed"), *(rate.get("vehicles") or {}).values()]):
+		frappe.throw(_("Rates can't be negative"))
+	doc.extra_bed = flt(rate.get("xbed"))
+	doc.vehicle_rates = json.dumps({k: flt(v) for k, v in (rate.get("vehicles") or {}).items() if flt(v) > 0})
 	doc.save()
 	return {"name": doc.name}
 

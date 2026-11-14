@@ -12,12 +12,15 @@
   "client_name",
   "phone",
   "customer",
+  "contact",
   "column_break_trip",
   "package_title",
   "destination",
   "start_date",
+  "end_date",
   "travellers",
   "tier",
+  "discount",
   "total",
   "section_state",
   "state_json"
@@ -69,6 +72,12 @@
    "options": "Customer"
   },
   {
+   "fieldname": "contact",
+   "fieldtype": "Link",
+   "label": "Contact",
+   "options": "Contact"
+  },
+  {
    "fieldname": "column_break_trip",
    "fieldtype": "Column Break"
   },
@@ -93,6 +102,13 @@
    "read_only": 1
   },
   {
+   "fieldname": "end_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "End Date",
+   "read_only": 1
+  },
+  {
    "fieldname": "travellers",
    "fieldtype": "Int",
    "label": "Travellers",
@@ -103,6 +119,13 @@
    "fieldtype": "Select",
    "label": "Tier",
    "options": "\nBudget\nMid-luxury\nLuxury",
+   "read_only": 1
+  },
+  {
+   "description": "Negotiated discount, taken off before GST",
+   "fieldname": "discount",
+   "fieldtype": "Currency",
+   "label": "Discount (INR)",
    "read_only": 1
   },
   {
@@ -129,7 +152,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-11-11 10:00:00.000000",
+ "modified": "2026-11-14 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Pavico Packages",
  "name": "Travel Quote",

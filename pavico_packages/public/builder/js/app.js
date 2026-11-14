@@ -40,8 +40,10 @@
   }
   function fresh() {
     return {
-      ref: newRef(), step: 1, client: '', phone: '', destId: '', template: null, startDate: isoIn(30),
-      adults: 2, children: 0, childAges: [], rooms: 1,
+      ref: newRef(), step: 1, client: '', phone: '', customer: '', contact: '', destId: '', template: null, startDate: isoIn(30),
+      adults: 2, children: 0, childAges: [], roomSharing: 2, roomsOverride: '',
+      vehicle: '', vehicleCount: '', discountType: 'amt', discount: 0,
+      extraCities: [], own: {},
       cities: [], picks: {}, tier: 'mid', mealPlan: 'CP', transfers: true,
       flightsPP: 0, flightsSource: 'TBO', visaPP: 0, insurancePP: 0, extras: [],
       rates: {}, marginPct: 10, gstPct: 5, edits: {}, view: 'client', pkgFilter: 'all',
@@ -60,14 +62,26 @@
   const $ = (sel) => document.querySelector(sel);
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const W = window.PavicoWiki;
-  const dest = () => D.destinations.find((d) => d.id === st.destId) || (st.customDest && st.customDest.id === st.destId ? st.customDest : null);
+  // The destination, plus any cities the team added by search and their own attractions
+  function dest() {
+    const d = D.destinations.find((x) => x.id === st.destId) || (st.customDest && st.customDest.id === st.destId ? st.customDest : null);
+    if (!d) return null;
+    (st.extraCities || []).forEach((x) => {
+      if (!d.cities.some((c) => c.id === x.id)) d.cities.push({ id: x.id, name: x.name, suggestedNights: x.suggestedNights || 2, attractions: [], food: [], mustTry: [], custom: true });
+    });
+    Object.entries(st.own || {}).forEach(([cid, items]) => {
+      const c = d.cities.find((x) => x.id === cid);
+      if (c) items.forEach((it) => { if (!c.attractions.some((a) => a.id === it.id)) c.attractions.push(Object.assign({ hours: 2, own: true }, it)); });
+    });
+    return d;
+  }
   const cityBlurb = (d, c) => (d.blurbFor ? d.blurbFor(c.id) : c.loaded ? `${c.attractions.length} things to do · Wikivoyage` : c.error ? 'Guide unavailable' : 'Wikivoyage guide');
 
   // Cities load their Wikivoyage listings the first time they are needed:
   //  · custom destinations get all their things to do from it
   //  · Pavico package cities keep their brochure items and gain eat/drink spots and extra sights
   const loadingCities = new Set();
-  const ENRICH_KEY = 'pavico.wvcity.v1';
+  const ENRICH_KEY = 'pavico.wvcity.v2'; // v2: includes nearby sights from Wikipedia's map
   const WV_ALIAS = {
     'Ha Long cruise': 'Ha Long', 'Lan Ha Bay cruise': 'Cat Ba Island', 'Lake Kawaguchi': 'Fujikawaguchiko', Sohra: 'Cherrapunji',
     'North-west coast': 'Grand Baie', Havelock: 'Havelock Island', Neil: 'Neil Island', 'Isle of Skye': 'Skye', Kaza: 'Kaza (India)',
@@ -88,13 +102,18 @@
     const d = dest();
     const c = d && d.cities.find((x) => x.id === cityId);
     if (!c || loadingCities.has(cityId)) return;
-    const custom = d.source === 'wikivoyage';
-    if (custom ? c.loaded : (c.enriched || c.enrichFailed)) return;
+    const custom = d.source === 'wikivoyage' || c.custom;
+    if (custom ? (c.loaded || c.error) : (c.enriched || c.enrichFailed)) return;
     loadingCities.add(cityId);
     W.loadCity({ id: c.id, name: custom ? c.name : (WV_ALIAS[c.name] || c.name) }).then((res) => {
-      if (custom) { Object.assign(c, res); delete c.error; return; }
+      if (custom) {
+        const own = c.attractions.filter((a) => a.own);
+        Object.assign(c, res); delete c.error;
+        own.forEach((a) => { if (!c.attractions.some((x) => x.id === a.id)) c.attractions.push(a); });
+        return;
+      }
       const data = {
-        attractions: res.attractions.map((a, i) => Object.assign(a, { id: `${c.id}-wa${i}`, src: 'wv' })),
+        attractions: res.attractions.map((a, i) => Object.assign(a, { id: `${c.id}-wa${i}`, src: a.src || 'wv' })),
         food: res.food.map((f, i) => Object.assign(f, { id: `${c.id}-wf${i}` })),
       };
       const cache = load(ENRICH_KEY, {}); cache[c.id] = data; store(ENRICH_KEY, cache);
@@ -131,7 +150,7 @@
   function categories(cityId) {
     const c = cityOf(cityId);
     const nights = st.cities.filter((x) => x.id === cityId).reduce((s, x) => s + +x.nights, 0);
-    const fromGuide = (a) => a.src === 'wv' || dest().source === 'wikivoyage';
+    const fromGuide = (a) => a.src === 'wv' || a.src === 'near' || dest().source === 'wikivoyage';
     const ranked = c.attractions.map((a) => ({ a, v: W.cachedViews(c.name, a.name) || 0 })).sort((x, y) => y.v - x.v);
     const top = ranked.length ? ranked[0].v : 0;
     // relative to the city's best-known sight, so it works for Tokyo and for Munnar alike
@@ -190,10 +209,15 @@
   function rateFor(cityId, tier) {
     const fromQuote = (st.rates[cityId] || {})[tier];
     const fromSheet = (sheet[cityId] || {})[tier];
-    return Object.assign({ hotel: defaultHotelName(cityId, tier), rate: 0, cab: 0, act: 0, source: 'ratesheet' }, fromSheet || {}, fromQuote || {});
+    const r = Object.assign({ hotel: defaultHotelName(cityId, tier), rate: 0, xbed: 0, cab: 0, act: 0, source: 'ratesheet' }, fromSheet || {}, fromQuote || {});
+    r.vehicles = Object.assign({}, (fromSheet || {}).vehicles, (fromQuote || {}).vehicles);
+    return r;
   }
-  function setRate(cityId, tier, field, value) {
-    const merged = Object.assign(rateFor(cityId, tier), { [field]: value });
+  function setRate(cityId, tier, field, value, vehicleId) {
+    const cur = rateFor(cityId, tier);
+    const merged = vehicleId
+      ? Object.assign(cur, { vehicles: Object.assign({}, cur.vehicles, { [vehicleId]: value }) })
+      : Object.assign(cur, { [field]: value });
     ((st.rates[cityId] = st.rates[cityId] || {})[tier] = merged);
     const city = cityOf(cityId);
     Store.rates.set(cityId, tier, merged, city ? city.name : '');
@@ -203,8 +227,11 @@
     const d = dest();
     if (!d || !st.cities.length) return null;
     const { lines, missing } = P.buildCostLines({ st, dest: d, tier: tierOverride || st.tier, rateFor });
-    return { lines, missing, sum: P.summarize(lines, +st.marginPct || 0, +st.gstPct || 0, pax()) };
+    return { lines, missing, sum: P.summarize(lines, +st.marginPct || 0, +st.gstPct || 0, pax(), { type: st.discountType, value: st.discount }) };
   }
+  const isoLocal = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const endDateIso = () => (st.startDate && st.cities.length ? isoLocal(I.addDays(st.startDate, nightsTotal())) : '');
+  const prettyDate = (iso) => (iso ? new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(`${iso}T00:00:00`)) : '');
 
   function itinerary() {
     const t = templateActive();
@@ -259,47 +286,83 @@
     return ['Pavico', part(st.client), part(pkg), `${nightsTotal()}N${nightsTotal() + 1}D`, `${st.ref}-v${version}`]
       .filter(Boolean).join('_') + '.pdf';
   }
-  let pdfLib = null;
-  function loadPdfLib() {
-    if (window.html2pdf) return Promise.resolve(window.html2pdf);
-    if (pdfLib) return pdfLib;
-    pdfLib = new Promise((resolve, reject) => {
-      const s = document.createElement('script');
-      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
-      s.onload = () => resolve(window.html2pdf);
-      s.onerror = () => { pdfLib = null; reject(new Error('PDF library could not load (offline?)')); };
-      document.head.appendChild(s);
-    });
-    return pdfLib;
+  /**
+   * The client document as a standalone A4 page: real text (selectable, editable in a PDF editor),
+   * and a footer on every page with the quote number and "Page X of Y".
+   */
+  function printableHtml(title, version) {
+    const doc = $('#client-doc').cloneNode(true);
+    doc.querySelectorAll('[contenteditable]').forEach((e) => e.removeAttribute('contenteditable'));
+    doc.querySelectorAll('img').forEach((i) => { i.setAttribute('src', i.src); i.removeAttribute('loading'); });
+    doc.querySelectorAll('.thumb').forEach((t) => { if (!t.querySelector('img')) t.remove(); });
+    doc.querySelectorAll('.day-photos').forEach((p) => { if (!p.children.length) p.remove(); });
+    // screen styles, minus the phone layout (an A4 page is narrower than the phone breakpoint)
+    const css = [...document.styleSheets].map((s) => {
+      try {
+        return [...s.cssRules].filter((r) => !(r.media && /max-width/.test(r.media.mediaText)) && !(r.media && /print/.test(r.media.mediaText))).map((r) => r.cssText).join('\n');
+      } catch (e) { return ''; }
+    }).join('\n');
+    const foot = `Pavico · Quote ${st.ref}${version ? ` · v${version}` : ''}`.replace(/"/g, '');
+    const printCss = `
+      @page { size: A4; margin: 14mm 13mm 16mm;
+        @bottom-left { content: "${foot}"; font: 8.5pt 'DM Sans', sans-serif; color: #4A5A72; }
+        @bottom-right { content: "Page " counter(page) " of " counter(pages); font: 8.5pt 'DM Sans', sans-serif; color: #4A5A72; } }
+      html, body { background: #fff !important; margin: 0; padding: 0; }
+      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; font-size: 10.5pt; }
+      .doc { box-shadow: none !important; border: 0 !important; border-radius: 0; margin: 0 !important; padding: 0 !important; max-width: none !important; width: auto; }
+      .doc-hero h1 { font-size: 22pt; }
+      .day { grid-template-columns: 80px 1fr; break-inside: avoid; page-break-inside: avoid; }
+      .day-photos .thumb { width: 31%; height: 30mm; }
+      .price-box, .facts, .two-col > div, .terms li, tr, .doc-head, .doc-foot { break-inside: avoid; page-break-inside: avoid; }
+      h2 { break-after: avoid; page-break-after: avoid; }
+      .doc-foot { display: none; }`;
+    return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${esc(title)}</title>
+      <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Outfit:wght@500;700&display=swap" rel="stylesheet">
+      <style>${css}\n${printCss}</style></head><body>${doc.outerHTML}
+      <p class="credit" style="margin-top:6mm">Pavico LLP, Pune · WhatsApp +91 93703 05751 · support@pavico.in · pavico.in</p></body></html>`;
   }
-  /** Saves a version if the quote changed, then downloads the client PDF named after that version. */
+
+  /** Saves a version if the quote changed, then produces the client PDF named after that version. */
   async function downloadPdf(btn) {
     const label = btn.textContent;
     btn.disabled = true; btn.textContent = 'Preparing PDF…';
     const prevView = st.view;
+    let name = '';
     try {
       const version = await saveVersion({ quiet: true });
       st.view = 'client'; render();
-      const [lib] = await Promise.all([loadPdfLib(), waitForImages($('#client-doc'))]);
-      const el = $('#client-doc');
-      el.classList.add('pdf-mode');
-      const name = pdfFileName(version);
-      await lib().set({
-        margin: [10, 10, 12, 10],
-        filename: name,
-        image: { type: 'jpeg', quality: 0.92 },
-        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-        pagebreak: { mode: ['css', 'legacy'], avoid: ['.day', 'tr', '.price-box', '.facts', 'li', 'h2', '.two-col > div'] },
-      }).from(el).save();
-      el.classList.remove('pdf-mode');
-      toast(`Downloaded ${name}`);
+      await waitForImages($('#client-doc'));
+      name = pdfFileName(version);
+      const html = printableHtml(name.replace(/\.pdf$/, ''), version);
+      if (Store.mode === 'erp') {
+        const blob = await Store.pdf(html, name);
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob); a.download = name;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+        toast(`Downloaded ${name}`);
+      } else {
+        printViaFrame(html);
+        toast('Choose “Save as PDF” in the print window');
+      }
     } catch (err) {
-      toast(`PDF failed: ${err.message}. Opening print instead; choose “Save as PDF”.`);
-      setTimeout(() => window.print(), 600);
+      toast(`PDF failed: ${err.message}`);
     } finally {
+      btn.disabled = false; btn.textContent = label;
       st.view = prevView; render();
     }
+  }
+  // for checking the PDF layout from the browser console
+  window.PavicoDebug = { printableHtml: () => printableHtml('preview', st.version) };
+
+  /** Prototype (no server): the browser's own Save as PDF, which keeps text and the page footers. */
+  function printViaFrame(html) {
+    const f = document.createElement('iframe');
+    f.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
+    document.body.appendChild(f);
+    f.contentDocument.open(); f.contentDocument.write(html); f.contentDocument.close();
+    const go = () => { f.contentWindow.focus(); f.contentWindow.print(); setTimeout(() => f.remove(), 60000); };
+    f.onload = () => setTimeout(go, 400);
   }
   function waitForImages(root, ms = 6000) {
     const imgs = root ? [...root.querySelectorAll('img')] : [];
@@ -356,6 +419,18 @@
     return `${fmt(p.price)} for 2 ${p.gstIncluded ? 'incl. GST' : '+ GST'}`;
   }
 
+  function roomsBlock() {
+    const rp = P.roomPlan(st);
+    return `<div class="grid4 rooms-row">
+        <label class="field small"><span>Room sharing</span><select data-bind="roomSharing">
+          <option value="2" ${rp.sharing === 2 ? 'selected' : ''}>2 per room (double)</option>
+          <option value="3" ${rp.sharing === 3 ? 'selected' : ''}>3 per room (triple, group tours)</option></select></label>
+        <label class="field small"><span>Rooms</span><input type="number" min="1" data-bind="roomsOverride" value="${esc(st.roomsOverride || '')}" placeholder="${rp.auto} (auto)"></label>
+        <p class="muted small rooms-note">${rp.guests} guest${rp.guests !== 1 ? 's' : ''} need beds${rp.smallKids ? ` (+${rp.smallKids} child${rp.smallKids > 1 ? 'ren' : ''} 5 or under sharing)` : ''} → <strong>${rp.rooms} room${rp.rooms > 1 ? 's' : ''}</strong>${rp.extraBeds ? ` + ${rp.extraBeds} extra bed${rp.extraBeds > 1 ? 's' : ''}` : ''}${rp.overridden ? ' (set by you)' : ''}.
+          ${rp.overfull ? '<span class="error-text">More than 3 people per room: add rooms.</span>' : ''}</p>
+      </div>`;
+  }
+
   // Step 1 — trip basics + start from a package
   function stepTrip() {
     const f = st.pkgFilter;
@@ -378,16 +453,22 @@
       <h1>Start a quote</h1>
       <p class="muted">Who is travelling, and when.</p>
       <div class="grid2">
-        <label class="field"><span>Client name</span><input data-bind="client" value="${esc(st.client)}" placeholder="e.g. Sharma family"></label>
-        <label class="field"><span>Client phone / WhatsApp</span><input data-bind="phone" value="${esc(st.phone)}" placeholder="Optional"></label>
+        <div class="field client-search"><span>Client name</span>
+          <input id="client-q" data-bind="client" value="${esc(st.client)}" placeholder="${Store.mode === 'erp' ? 'Type to search ERPNext customers & contacts' : 'e.g. Sharma family'}" autocomplete="off">
+          <div id="client-results" class="wv-results"></div>
+          ${st.customer || st.contact ? `<small class="linked">Linked to ERPNext ${st.customer ? `customer <strong>${esc(st.customer)}</strong>` : ''}${st.customer && st.contact ? ' · ' : ''}${st.contact ? `contact <strong>${esc(st.contact)}</strong>` : ''} <button class="btn link" data-action="unlink-client">Unlink</button></small>`
+            : Store.mode === 'erp' && st.client ? '<small class="muted">New client: a contact is created in ERPNext when you save the quote.</small>' : ''}
+        </div>
+        <label class="field"><span>Client phone / WhatsApp</span><input data-bind="phone" value="${esc(st.phone)}" placeholder="Filled from the contact, or type it"></label>
       </div>
       <div class="grid4">
         <label class="field small"><span>Start date</span><input type="date" data-bind="startDate" value="${esc(st.startDate)}"></label>
+        <label class="field small"><span>End date</span><input type="date" value="${esc(endDateIso())}" disabled title="Start date + total nights of the route">${st.cities.length ? '' : '<small class="muted">Set by the route</small>'}</label>
         <label class="field small"><span>Adults</span><input type="number" min="1" data-bind="adults" value="${st.adults}"></label>
-        <label class="field small"><span>Children</span><input type="number" min="0" max="6" data-bind="children" value="${st.children}"></label>
-        <label class="field small"><span>Rooms</span><input type="number" min="1" data-bind="rooms" value="${st.rooms}"></label>
+        <label class="field small"><span>Children</span><input type="number" min="0" max="10" data-bind="children" value="${st.children}"></label>
       </div>
       ${ages ? `<div class="grid4">${ages}</div>` : ''}
+      ${roomsBlock()}
 
       <div class="section-head">
         <h2>Start from a Pavico package</h2>
@@ -449,6 +530,11 @@
       <p class="muted">Add cities in travel order and set nights. A city can appear twice (e.g. Srinagar at the start and end).</p>
       ${tp ? `<p class="note">${t ? `Matches <strong>${esc(tp.title)}</strong>, so the quote uses the brochure’s day-by-day plan.` : `Changed from <strong>${esc(tp.title)}</strong>, so the day plan is now built from the experiences you pick. <button class="btn link" data-action="use-package" data-id="${tp.id}">Reset to the package route</button>`}</p>` : ''}
       <div class="city-grid">${cards}</div>
+      <div class="field wv-search add-city-search">
+        <span>City or place not listed? (e.g. Ella, Nuwara Eliya, Munnar)</span>
+        <input id="city-q" placeholder="Search any town or region to add it" autocomplete="off">
+        <div id="city-results" class="wv-results"></div>
+      </div>
       ${st.cities.length ? `<h2>Route · ${nightsTotal()}N / ${nightsTotal() + 1}D</h2><ol class="route">${route}</ol>` : ''}
       ${navButtons('Pick experiences', !st.cities.length)}
     </section>`;
@@ -472,6 +558,7 @@
         ${kind === 'attractions' ? `<button class="mini" data-action="star" data-pc="${esc(c.name)}" data-pn="${esc(item.name)}">${star ? 'Remove Pavico pick' : '★ Pavico pick'}</button>` : ''}
         <label class="mini">Your photo<input type="file" accept="image/*" hidden data-upload-c="${esc(c.name)}" data-upload-n="${esc(item.name)}"></label>
         <button class="mini" data-action="hide-photo" data-pc="${esc(c.name)}" data-pn="${esc(item.name)}">No photo</button>
+        ${item.own ? `<button class="mini" data-action="del-own" data-city="${c.id}" data-id="${item.id}">Remove</button>` : ''}
       </span>
     </div>`;
   }
@@ -479,7 +566,7 @@
     const t = templateActive();
     const d = dest();
     const { warnings } = I.build(st, d, () => null);
-    const meta = (a) => [a.hours ? `~${a.hours}h` : '', a.price ? esc(a.price.length > 40 ? `${a.price.slice(0, 40)}…` : a.price) : '', a.note ? esc(a.note.slice(0, 70)) + (a.note.length > 70 ? '…' : '') : ''].filter(Boolean).join(' · ');
+    const meta = (a) => [a.own ? 'Added by you' : a.src === 'near' ? 'Nearby · Wikipedia' : '', a.hours ? `~${a.hours}h` : '', a.price ? esc(a.price.length > 40 ? `${a.price.slice(0, 40)}…` : a.price) : '', a.note ? esc(a.note.slice(0, 70)) + (a.note.length > 70 ? '…' : '') : ''].filter(Boolean).join(' · ');
     const loading = uniqueCities().some((id) => loadingCities.has(id));
     const statsLoading = statsPending;
     const blocks = uniqueCities().map((id) => {
@@ -494,6 +581,7 @@
         ${c.attractions.length ? `<div class="exp-head"><h3>Things to do <span class="muted">· ${c.attractions.length}</span></h3>
           <button class="btn link" data-action="select-all" data-city="${c.id}" data-kind="attractions">Select all</button></div>
         <div class="chip-grid">${c.attractions.map((a) => chip(c, 'attractions', a, meta(a), cats)).join('')}</div>` : ''}
+        <form class="own-add" data-own-city="${c.id}"><input name="own" placeholder="Add a place not listed, e.g. Nine Arch Bridge" autocomplete="off"><button class="btn ghost small" type="submit">+ Add</button></form>
         <div class="exp-head"><h3>Where to eat &amp; drink <span class="muted">· ${food.length}</span></h3>
           ${food.length ? `<button class="btn link" data-action="select-all" data-city="${c.id}" data-kind="food">Select all</button>` : ''}</div>
         ${food.length ? `<div class="chip-grid">${food.map((f) => chip(c, 'food', f, meta(Object.assign({}, f, { hours: 0 })))).join('')}</div>`
@@ -514,6 +602,20 @@
       ${blocks}
       ${navButtons('Choose package')}
     </section>`;
+  }
+
+  function vehicleBlock(d) {
+    const vp = P.vehiclePlan(st, d.type);
+    const list = P.vehicleList(d.type);
+    const autoId = P.suggestVehicle(d.type, pax());
+    return `<div class="grid2 vehicle-row">
+        <label class="field"><span>Vehicle</span><select data-bind="vehicle">
+          <option value="" ${!st.vehicle ? 'selected' : ''}>Auto: ${esc(list.find((v) => v.id === autoId).label)}</option>
+          ${list.map((v) => `<option value="${v.id}" ${st.vehicle === v.id ? 'selected' : ''}>${esc(v.label)} · up to ${v.seats}</option>`).join('')}</select>
+          <small class="muted">${pax()} traveller${pax() !== 1 ? 's' : ''} with luggage.</small></label>
+        <label class="field"><span>Number of vehicles</span><input type="number" min="1" data-bind="vehicleCount" value="${esc(st.vehicleCount || '')}" placeholder="${vp.needed} (auto)">
+          ${vp.tooSmall ? `<small class="error-text">${vp.count} × ${esc(vp.vehicle.label)} seats only ${vp.count * vp.vehicle.seats}. Choose a bigger vehicle or more vehicles.</small>` : ''}</label>
+      </div>`;
   }
 
   // Step 4 — package
@@ -540,6 +642,7 @@
         <label class="field"><span>Meal plan</span><select data-bind="mealPlan">${Object.entries(MEALS).map(([k, v]) => `<option value="${k}" title="${MEAL_HINTS[k]}" ${st.mealPlan === k ? 'selected' : ''}>${v}</option>`).join('')}</select><small class="muted">${MEAL_HINTS[st.mealPlan] || ''}</small></label>
         <label class="field check-field"><input type="checkbox" data-bind="transfers" ${st.transfers ? 'checked' : ''}><span>Private vehicle for transfers &amp; sightseeing</span></label>
       </div>
+      ${st.transfers ? vehicleBlock(d) : ''}
       <h2>Flights</h2>
       <p class="muted small">Check fares on TBO / TripJack / MMT and enter the per-person return fare. Leave 0 for land-only.</p>
       <div class="grid2">
@@ -563,19 +666,23 @@
     const sup = S.SUPPLIERS.map((s) => `<li class="sup ${s.status}"><strong>${esc(s.name)}</strong>
       <span class="pill">${s.status === 'connected' ? 'Active' : s.status === 'manual' ? 'Manual entry' : 'Needs API access'}</span>
       <small class="muted">${esc(s.note)}</small></li>`).join('');
+    const rp = P.roomPlan(st);
+    const vp = P.vehiclePlan(st, dest().type);
     const rows = uniqueCities().map((id) => {
       const c = cityOf(id);
       const r = rateFor(id, st.tier);
       const nights = st.cities.filter((x) => x.id === id).reduce((s, x) => s + +x.nights, 0);
-      const f = (field, label, type = 'number', ph = '') => `<label class="field small"><span>${label}</span>
-        <input type="${type}" ${type === 'number' ? 'min="0"' : ''} data-rate="${id}" data-field="${field}" value="${esc(type === 'number' ? (+r[field] || '') : r[field])}" placeholder="${ph}"></label>`;
+      const f = (field, label, type = 'number', ph = '', val) => `<label class="field small"><span>${label}</span>
+        <input type="${type}" ${type === 'number' ? 'min="0"' : ''} data-rate="${id}" data-field="${field}" ${field === 'veh' ? `data-veh="${vp.vehicle.id}"` : ''} value="${esc(val !== undefined ? val : type === 'number' ? (+r[field] || '') : r[field])}" placeholder="${ph}"></label>`;
+      const vehRate = +(r.vehicles || {})[vp.vehicle.id] || (!Object.keys(r.vehicles || {}).length && +r.cab) || '';
       return `<div class="rate-city">
         <h2>${esc(c.name)} <span class="muted">· ${nights}N · ${tierLabel(st.tier)}</span></h2>
         <div class="rate-grid">
           ${f('hotel', 'Hotel', 'text', 'Hotel name or “or similar”')}
           <label class="field small"><span>Rate source</span><select data-rate="${id}" data-field="source">${S.SUPPLIERS.map((s) => `<option value="${s.id}" ${r.source === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></label>
           ${f('rate', `₹ per room per night (${mealText(st.mealPlan)})`, 'number', 'e.g. 6500')}
-          ${f('cab', '₹ vehicle per day', 'number', 'e.g. 3500')}
+          ${rp.extraBeds ? f('xbed', '₹ extra bed per night (3rd person)', 'number', 'e.g. 1500') : ''}
+          ${st.transfers ? f('veh', `₹ per day · ${esc(vp.vehicle.label)}`, 'number', 'e.g. 3500', vehRate) : ''}
           ${f('act', '₹ activities & entries per person', 'number', 'optional')}
         </div>
       </div>`;
@@ -599,6 +706,8 @@
           <button class="${st.view === 'internal' ? 'on' : ''}" data-action="view" data-view="internal">Internal costing</button>
         </div>
         <label class="field inline"><span>Margin %</span><input type="number" min="0" max="50" step="0.5" data-bind="marginPct" value="${st.marginPct}"></label>
+        <label class="field inline discount"><span>Discount</span><input type="number" min="0" ${st.discountType === 'pct' ? 'max="100" step="0.5"' : 'step="100"'} data-bind="discount" value="${+st.discount || ''}" placeholder="0">
+          <select data-bind="discountType"><option value="amt" ${st.discountType !== 'pct' ? 'selected' : ''}>₹</option><option value="pct" ${st.discountType === 'pct' ? 'selected' : ''}>%</option></select></label>
         <div class="spacer"></div>
         <button class="btn ghost" data-action="copy-wa">Copy for WhatsApp</button>
         <button class="btn ghost" data-action="save-quote">Save quote</button>
@@ -634,6 +743,7 @@
         <tfoot>
           <tr><td colspan="2">Base cost</td><td class="num">${fmt(s.base)}</td></tr>
           <tr><td colspan="2">Pavico margin (${st.marginPct}%)</td><td class="num">${fmt(s.margin)}</td></tr>
+          ${s.discount ? `<tr><td colspan="2">Discount${st.discountType === 'pct' ? ` (${+st.discount}%)` : ''}${s.belowCost ? ' <span class="error-text">· more than the margin: selling below cost</span>' : ''}</td><td class="num">− ${fmt(s.discount)}</td></tr>` : ''}
           <tr><td colspan="2">Package price (before GST)</td><td class="num">${fmt(s.subtotal)}</td></tr>
           <tr><td colspan="2">GST (${st.gstPct}%)</td><td class="num">${fmt(s.gst)}</td></tr>
           <tr class="grand"><td colspan="2">Client pays</td><td class="num">${fmt(s.total)}</td></tr>
@@ -670,14 +780,47 @@
     return `Pay ${adv}% advance (${fmt(advAmt)}) to confirm your trip. The balance ${100 - adv}% (${fmt(total - advAmt)}) is due ${dueText}.`;
   }
 
+  // Meal wording that matches the chosen plan, so a brochure's "breakfast and dinner" never
+  // survives into a CP (breakfast only) quote.
+  const MEAL_PHRASE = { EP: 'room only', CP: 'with breakfast', MAP: 'with breakfast and dinner', AP: 'with all meals', AI: 'all inclusive' };
+  const MEAL_EXCL = { EP: 'All meals', CP: 'Lunch and dinner', MAP: 'Lunch', AP: '', AI: '' };
+  const STAY_RE = /\b(nights?|hotels?|resorts?|stays?)\b/i;
+  const MEAL_IN_STAY_RE = /,?\s*(?:with\s+)?(?:daily\s+)?breakfast(?:\s+(?:and|&)\s+dinner)?(?:\s+daily)?/i;
+  function adjustInclusionMeals(list, templateMeals) {
+    if (templateMeals === st.mealPlan) return list;
+    const out = [];
+    list.forEach((line) => {
+      if (/^\s*(daily breakfast|breakfast daily|breakfast and dinner daily|breakfast (?:and|&) dinner)\s*$/i.test(line)) return; // meal-only line
+      if (STAY_RE.test(line) && MEAL_IN_STAY_RE.test(line) && !/cruise|camp|tent|ryokan/i.test(line)) {
+        out.push(`${line.replace(MEAL_IN_STAY_RE, '').replace(/\s+,/g, ',').trim()}, ${MEAL_PHRASE[st.mealPlan] || ''}`.replace(/,\s*$/, ''));
+      } else out.push(line);
+    });
+    if (!out.some((l) => /breakfast|room only|all meals|all inclusive/i.test(l))) out.push(`Meals: ${mealText(st.mealPlan)}`);
+    return out;
+  }
+  function adjustExclusionMeals(list) {
+    const out = list.filter((l) => !/^\s*(lunch(es)?( and (other )?dinners?)?|dinners?|lunch and dinner|meals not mentioned above|all meals)\s*$/i.test(l));
+    if (MEAL_EXCL[st.mealPlan]) out.unshift(MEAL_EXCL[st.mealPlan]);
+    return out;
+  }
+  function vehicleText() {
+    const vp = P.vehiclePlan(st, dest().type);
+    return `Private ${vp.count > 1 ? `${vp.count} × ` : ''}${vp.vehicle.label} for all transfers and sightseeing as per itinerary`;
+  }
+
   function inclusions() {
     const t = templateActive();
-    if (t) return [...t.inc, ...(+st.flightsPP > 0 ? ['Return flights (economy)'] : []), ...st.extras.filter((x) => x.label && +x.amount).map((x) => x.label)];
+    if (t) {
+      let inc = adjustInclusionMeals(t.inc.slice(), t.meals);
+      if (st.transfers) inc = inc.map((l) => (/^\s*private\b.*\b(sedan|suv|car|vehicle|innova|tempo)/i.test(l) ? vehicleText() : l));
+      return [...inc, ...(+st.flightsPP > 0 ? ['Return flights (economy)'] : []), ...st.extras.filter((x) => x.label && +x.amount).map((x) => x.label)];
+    }
+    const rp = P.roomPlan(st);
     const list = [
-      `${nightsTotal()} nights in ${TIERS.find((x) => x.id === st.tier).hint} hotels (${st.rooms} room${st.rooms > 1 ? 's' : ''})`,
+      `${nightsTotal()} nights in ${TIERS.find((x) => x.id === st.tier).hint} hotels (${rp.rooms} room${rp.rooms > 1 ? 's' : ''}, ${rp.sharing === 3 ? 'triple' : 'double'} sharing${rp.extraBeds ? `, ${rp.extraBeds} extra bed${rp.extraBeds > 1 ? 's' : ''}` : ''})`,
       `Meals: ${mealText(st.mealPlan)}`,
     ];
-    if (st.transfers) list.push('Private vehicle for all transfers and sightseeing as per itinerary');
+    if (st.transfers) list.push(vehicleText());
     if (uniqueCities().some((id) => +rateFor(id, st.tier).act > 0)) list.push('Entry tickets and activities as listed');
     if (+st.flightsPP > 0) list.push('Return flights (economy)');
     if (+st.visaPP > 0) list.push('Tourist visa');
@@ -687,7 +830,7 @@
   }
   function exclusions() {
     const t = templateActive();
-    let list = t ? t.exc.slice() : ['Flights / train tickets', 'Meals not mentioned above', 'Personal expenses: laundry, tips, shopping', 'Anything not listed under inclusions'];
+    let list = adjustExclusionMeals(t ? t.exc.slice() : ['Flights / train tickets', 'Personal expenses: laundry, tips, shopping', 'Anything not listed under inclusions']);
     if (+st.flightsPP > 0) list = list.filter((x) => !/^flights/i.test(x));
     return list;
   }
@@ -742,6 +885,7 @@
       <section class="price-box">
         <div><small>Package price per person</small><strong>${fmt(s.subtotalPP)}</strong><span>+ ${st.gstPct}% GST (${fmt(s.gstPP)})</span></div>
         <div><small>Total for ${pax()} traveller${pax() > 1 ? 's' : ''}</small><strong>${fmt(s.total)}</strong><span>including ${fmt(s.gst)} GST</span></div>
+        ${s.discount ? `<p class="discount-note">Includes a special discount of ${fmt(s.discount)}.</p>` : ''}
       </section>
       <section class="terms">
         <h2>Good to know</h2>
@@ -770,11 +914,12 @@
     const t = st.template && pkgOf(st.template);
     el.innerHTML = `<div class="sum-card">
       <h3>${esc(t ? t.title : d.name)}</h3>
-      <p class="muted small">${nightsTotal()}N · ${pax()} pax · ${tierLabel(st.tier)} · ${esc(st.ref)}${st.version ? ` v${st.version}` : ' (not saved)'}</p>
+      <p class="muted small">${st.startDate ? `${prettyDate(st.startDate)} – ${prettyDate(endDateIso())}<br>` : ''}${nightsTotal()}N · ${pax()} pax · ${P.roomPlan(st).rooms} rm · ${tierLabel(st.tier)} · ${esc(st.ref)}${st.version ? ` v${st.version}` : ' (not saved)'}</p>
       <dl>${Object.entries(cats).map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${fmt(v)}</dd></div>`).join('')}</dl>
       <dl class="totals">
         <div><dt>Base cost</dt><dd>${fmt(s.base)}</dd></div>
         <div><dt>Margin ${st.marginPct}%</dt><dd>${fmt(s.margin)}</dd></div>
+        ${s.discount ? `<div><dt>Discount</dt><dd>− ${fmt(s.discount)}</dd></div>` : ''}
         <div><dt>GST ${st.gstPct}%</dt><dd>${fmt(s.gst)}</dd></div>
         <div class="grand"><dt>Total</dt><dd>${fmt(s.total)}</dd></div>
       </dl>
@@ -801,8 +946,18 @@
     const v = latest ? latest.version + 1 : 1;
     const t = st.template && pkgOf(st.template);
     st.version = v; save();
-    return Store.quotes.save({ ref: st.ref, version: v, client: st.client, title: t ? t.title : dest().name, total: quote().sum.total, savedAt: Date.now(), state: JSON.parse(JSON.stringify(st)) })
-      .then((ok) => { if (ok && !quiet) toast(`Saved ${st.ref} v${v}`); return v; });
+    const q = quote();
+    return Store.quotes.save({ ref: st.ref, version: v, client: st.client, title: t ? t.title : dest().name, total: q.sum.total, discount: q.sum.discount, endDate: endDateIso(), savedAt: Date.now(), state: JSON.parse(JSON.stringify(st)) })
+      .then((ok) => {
+        // ERPNext links (or creates) the client's contact: remember it so later versions stay linked
+        if (ok && typeof ok === 'object' && (ok.contact || ok.customer)) {
+          st.contact = ok.contact || st.contact; st.customer = ok.customer || st.customer;
+          const saved = Store.quotes.get(st.ref, v); if (saved) Object.assign(saved.state, { contact: st.contact, customer: st.customer });
+          save();
+        }
+        if (ok && !quiet) toast(`Saved ${st.ref} v${v}`);
+        return v;
+      });
   }
 
   const savedList = () => Store.quotes.list();
@@ -869,6 +1024,55 @@
 
   // destination search (updates only the results list, so the input keeps focus)
   let searchTimer;
+  // Client search: ERPNext customers & contacts (or past quotes in the prototype)
+  let clientTimer;
+  document.addEventListener('input', (e) => {
+    if (e.target.id !== 'client-q') return;
+    clearTimeout(clientTimer);
+    const q = e.target.value.trim();
+    clientTimer = setTimeout(async () => {
+      const box = $('#client-results');
+      if (!box) return;
+      if (q.length < 2) { box.innerHTML = ''; return; }
+      const hits = await Store.clients.search(q).catch(() => []);
+      box.innerHTML = hits.map((h, i) => `<button type="button" data-action="pick-client" data-i="${i}">
+          <strong>${esc(h.title)}</strong> <small class="muted">${esc(h.type)}${h.phone ? ` · ${esc(h.phone)}` : ''}${h.customer && h.type !== 'Customer' ? ` · ${esc(h.customer)}` : ''}</small></button>`).join('')
+        || '<span class="muted small">No match. The name you type is used as a new client.</span>';
+      box._hits = hits;
+    }, 250);
+  });
+  // Add any town or region to the route's city list
+  let cityTimer;
+  document.addEventListener('input', (e) => {
+    if (e.target.id !== 'city-q') return;
+    clearTimeout(cityTimer);
+    const q = e.target.value;
+    cityTimer = setTimeout(async () => {
+      const box = $('#city-results');
+      if (!box) return;
+      const hits = await W.searchDestinations(q).catch(() => []);
+      box.innerHTML = hits.map((h) => `<button type="button" data-action="add-wv-city" data-title="${esc(h)}">+ ${esc(h)}</button>`).join('')
+        || (q.trim().length > 1 ? '<span class="muted small">No guide page found. Try a nearby town.</span>' : '');
+    }, 250);
+  });
+  // Add your own attraction to a city
+  document.addEventListener('submit', (e) => {
+    const form = e.target.closest('form[data-own-city]');
+    if (!form) return;
+    e.preventDefault();
+    const name = form.elements.own.value.trim();
+    if (!name) return;
+    const cid = form.dataset.ownCity;
+    const list = (st.own[cid] = st.own[cid] || []);
+    if (list.some((x) => x.name.toLowerCase() === name.toLowerCase())) { toast('Already added'); return; }
+    const id = `${cid}-own${Date.now().toString(36)}`;
+    list.push({ id, name, hours: 2 });
+    const p = (st.picks[cid] = st.picks[cid] || {});
+    (p.attractions = p.attractions || []).push(id);
+    toast(`Added ${name}`);
+    render();
+  });
+
   document.addEventListener('input', (e) => {
     if (e.target.id !== 'wv-q') return;
     clearTimeout(searchTimer);
@@ -895,18 +1099,32 @@
       }).catch(() => toast('That file could not be read as an image'));
       return;
     }
+    // Numbers can never go below their minimum (rates, travellers, discount…): show the error, keep the old value
+    if (el.type === 'number' && el.value !== '' && el.min !== '' && +el.value < +el.min) {
+      el.classList.add('invalid');
+      toast(+el.min === 0 ? 'This can’t be negative. Enter 0 or more.' : `This must be at least ${el.min}.`);
+      setTimeout(render, 1600);
+      return;
+    }
+    if (el.type === 'number' && el.max !== '' && el.value !== '' && +el.value > +el.max) {
+      el.classList.add('invalid');
+      toast(`This can’t be more than ${el.max}.`);
+      setTimeout(render, 1600);
+      return;
+    }
     if (el.dataset && el.dataset.rate) {
-      const v = el.type === 'number' ? Math.max(0, +el.value || 0) : el.value;
-      setRate(el.dataset.rate, st.tier, el.dataset.field, v);
-      renderSummary(); save();
+      const v = el.type === 'number' ? (+el.value || 0) : el.value;
+      setRate(el.dataset.rate, st.tier, el.dataset.field, v, el.dataset.veh);
+      render();
       return;
     }
     const path = el.dataset && el.dataset.bind;
     if (!path) return;
     let v = el.type === 'checkbox' ? el.checked : el.value;
-    if (el.type === 'number' && v !== '') v = Math.max(+el.min || 0, +v);
+    if (el.type === 'number' && v !== '') v = +v;
     setPath(path, v);
-    if (path === 'destId') { st.cities = []; st.picks = {}; st.edits = {}; st.template = null; }
+    if (path === 'client') { st.customer = ''; st.contact = ''; }
+    if (path === 'destId') { st.cities = []; st.picks = {}; st.edits = {}; st.template = null; st.extraCities = []; st.own = {}; }
     if (path === 'children') st.childAges = st.childAges.slice(0, +v);
     render();
   });
@@ -932,6 +1150,31 @@
       case 'pkg-filter': st.pkgFilter = ds.v; break;
       case 'use-package': applyTemplate(ds.id); toast(`Loaded ${pkgOf(ds.id).title}`); break;
       case 'add-city': st.cities.push({ id: ds.id, nights: cityOf(ds.id).suggestedNights }); ensureCity(ds.id); break;
+      case 'add-wv-city': {
+        const id = `wv-${W.slug(ds.title)}`;
+        const existing = dest().cities.find((c) => c.id === id || c.name.toLowerCase() === ds.title.toLowerCase());
+        const cid = existing ? existing.id : id;
+        if (!existing) st.extraCities.push({ id, name: ds.title, suggestedNights: 2 });
+        st.cities.push({ id: cid, nights: existing ? existing.suggestedNights : 2 });
+        ensureCity(cid);
+        toast(`Added ${ds.title} to the route`);
+        break;
+      }
+      case 'del-own': {
+        st.own[ds.city] = (st.own[ds.city] || []).filter((x) => x.id !== ds.id);
+        const c = cityOf(ds.city); if (c) c.attractions = c.attractions.filter((a) => a.id !== ds.id);
+        const p = st.picks[ds.city] || {}; p.attractions = (p.attractions || []).filter((x) => x !== ds.id);
+        break;
+      }
+      case 'pick-client': {
+        const box = $('#client-results');
+        const h = box && box._hits && box._hits[+ds.i];
+        if (!h) return;
+        st.client = h.title; st.phone = h.phone || st.phone;
+        st.customer = h.customer || ''; st.contact = h.contact || '';
+        break;
+      }
+      case 'unlink-client': st.customer = ''; st.contact = ''; break;
       case 'pick-wv': {
         const box = $('#wv-results');
         if (box) box.innerHTML = `<span class="muted small">Loading ${esc(ds.title)}…</span>`;
