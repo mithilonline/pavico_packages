@@ -213,7 +213,7 @@ def quote_pdf(html, filename="Pavico-quote.pdf"):
 		subprocess.run(
 			[
 				chromium, "--headless", "--no-sandbox", "--disable-gpu", "--no-pdf-header-footer",
-				"--blink-settings=scriptEnabled=false", "--virtual-time-budget=15000",
+				"--virtual-time-budget=15000",
 				f"--print-to-pdf={out}", f"file://{src}",
 			],
 			capture_output=True, timeout=120, check=False,
